@@ -1,6 +1,13 @@
 from django.shortcuts import render
 from .models import Post
-from django.views.generic import ListView
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.views.generic import (
+    ListView,
+    DetailView, 
+    CreateView,
+    UpdateView,
+    DeleteView
+)
 
 def home(request):
     context = {
@@ -14,7 +21,42 @@ class PostListView(ListView):
     template_name = 'blog/home.html'
     #by convention <app>/<model>_<view_type>.html
     context_object_name = 'posts' #b/c django takes obj list as default not the text
+    ordering = ['-date_posted'] #with - sign newwest to oldest
     
+class PostDetailView(DetailView):
+    model = Post
+    
+class PostCreateView(LoginRequiredMixin, CreateView):
+    model = Post
+    fields = ['title', 'content']
+    def form_valid(self, form):
+        form.instance.author = self.request.user # set the author as cur user before submitting
+        return super().form_valid(form) #this would have been called anyway but we nee to return it
+
+#UserPassesTestMixin is for authenticating author before editing
+class PostUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
+    model = Post
+    fields = ['title', 'content']
+    def form_valid(self, form):
+        form.instance.author = self.request.user # set the author as cur user before submitting
+        return super().form_valid(form) #this would have been called anyway but we nee to return it
+
+    #this is for checking UserPassesTestMixin
+    def test_func(self):
+        post = self.get_object()
+        if self.request.user == post.author:
+            return True
+        return False
+
+class PostDeleteView(LoginRequiredMixin, UserPassesTestMixin, DeleteView):
+    model = Post
+    success_url = '/' #after deleting, send to home
+    def test_func(self):
+        post = self.get_object()
+        if self.request.user == post.author:
+            return True
+        return False
+
 
 def about(request):
     return render(request, 'blog/about.html', {'title': 'About'})
