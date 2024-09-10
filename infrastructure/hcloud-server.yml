@@ -1,0 +1,48 @@
+---
+- name: Create basic server and apply updates
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hcloud_token: gbmge9nfgvyrip2j2eh2v4o3jbdahztlejoo1jd6ex7zpxagcj1f7x8rynlezm3k
+  tasks:
+    - name: Create a basic server
+      hcloud_server:
+        api_token: "{{ hcloud_token }}"
+        name: my-server
+        server_type: cpx11
+        image: ubuntu-24.04
+        location: ash
+        ssh_keys: 
+          - my_ssh_key
+        state: present
+      register: server
+
+    - name: Debug the server creation result
+      debug:
+        var: server
+
+    - name: Wait for SSH to become available
+      wait_for:
+        host: "{{ server.hcloud_server.ipv4_address }}"
+        port: 22
+        delay: 10
+        timeout: 300
+        state: started
+
+    - name: Ensure APT is configured correctly (update apt sources)
+      ansible.builtin.shell: |
+        sed -i '/APT::Default-Release/d' /etc/apt/apt.conf || true
+        apt-get update
+      delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+
+    - name: Upgrade all packages and install security updates
+      apt:
+        upgrade: dist
+        update_cache: yes
+      delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+
+    - name: Reboot the server if a kernel upgrade was applied
+      reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ server.hcloud_server.ipv4_address }}"
