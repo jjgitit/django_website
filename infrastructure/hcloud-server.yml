@@ -4,14 +4,15 @@
   connection: local
   gather_facts: false
   vars:
-    hcloud_token: gbmge9nfgvyrip2j2eh2v4o3jbdahztlejoo1jd6ex7zpxagcj1f7x8rynlezm3k
+    hcloud_token: pKArOf2ozVsfeFPWtozsX28r46T2QrEnPktFNfwLYfRNF6Hhel4DApEw9Scu3ywd
+
   tasks:
     - name: Create a basic server
       hcloud_server:
         api_token: "{{ hcloud_token }}"
         name: my-server
         server_type: cpx11
-        image: ubuntu-24.04
+        image: ubuntu-22.04
         location: ash
         ssh_keys: 
           - my_ssh_key
@@ -30,19 +31,43 @@
         timeout: 300
         state: started
 
-    - name: Ensure APT is configured correctly (update apt sources)
-      ansible.builtin.shell: |
-        sed -i '/APT::Default-Release/d' /etc/apt/apt.conf || true
-        apt-get update
+    # Gather facts explicitly from the remote host
+    - name: Gather facts about the remote system
+      ansible.builtin.setup:
       delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+
+    - name: Ensure system package manager update
+      block:
+        - name: Update apt for Debian/Ubuntu
+          ansible.builtin.shell: |
+            if [ -f /etc/apt/apt.conf ]; then
+              sed -i.bak '/APT::Default-Release/d' /etc/apt/apt.conf
+              apt-get update
+            fi
+          delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+          when: ansible_distribution in ['Ubuntu', 'Debian']
+
+        - name: Update yum for CentOS/RedHat
+          ansible.builtin.shell: yum update -y
+          delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+          when: ansible_distribution in ['CentOS', 'RedHat']
+
+        - name: Update pacman for Arch Linux
+          ansible.builtin.shell: pacman -Syu --noconfirm
+          delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+          when: ansible_distribution == 'Archlinux'
 
     - name: Upgrade all packages and install security updates
       apt:
         upgrade: dist
         update_cache: yes
       delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+      when: ansible_distribution in ['Ubuntu', 'Debian']
 
     - name: Reboot the server if a kernel upgrade was applied
       reboot:
         reboot_timeout: 600
+        connect_timeout: 5
+        test_command: whoami  # Command to test if the server has come back up
       delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+      when: ansible_distribution in ['Ubuntu', 'Debian']
