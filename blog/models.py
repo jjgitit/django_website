@@ -10,6 +10,7 @@ from django.utils import timezone
 
 # we create our data here as classes which is an intuitive way of constructing
 class Post(models.Model):
+    """creating posts with default attributes"""
     title = models.CharField(max_length=100)
     content = models.TextField()
     date_posted = models.DateTimeField(default=timezone.now)

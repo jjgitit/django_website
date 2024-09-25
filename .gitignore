@@ -1,0 +1,13 @@
+# Ignore environment files
+.env
+
+# Ignore temporary files and directories
+*.log
+*.tmp
+__pycache__/
+
+# Ignore system files (macOS, Linux, etc.)
+.DS_Store
+
+db.sqlite3
+posts.json

@@ -1,12 +1,15 @@
 ---
-- name: Create basic server and apply updates
+- name: Create basic server on Hetzner Cloud
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    hcloud_token: pKArOf2ozVsfeFPWtozsX28r46T2QrEnPktFNfwLYfRNF6Hhel4DApEw9Scu3ywd
-
+    hcloud_token: "{{ lookup('env', 'HCLOUD_API_TOKEN') }}"
   tasks:
+    # - name: Print the API token before using it
+    #   debug:
+    #     msg: "Using API token: {{ lookup('env', 'HCLOUD_API_TOKEN') }}"
+
     - name: Create a basic server
       hcloud_server:
         api_token: "{{ hcloud_token }}"
@@ -19,10 +22,6 @@
         state: present
       register: server
 
-    - name: Debug the server creation result
-      debug:
-        var: server
-
     - name: Wait for SSH to become available
       wait_for:
         host: "{{ server.hcloud_server.ipv4_address }}"
@@ -31,11 +30,22 @@
         timeout: 300
         state: started
 
-    # Gather facts explicitly from the remote host
-    - name: Gather facts about the remote system
-      ansible.builtin.setup:
-      delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+    - name: Add the new server to the inventory
+      add_host:
+        name: "{{ server.hcloud_server.ipv4_address }}"
+        ansible_ssh_private_key_file: /Users/jaeyeonlee/.ssh/id_ed25519
+        ansible_user: root
 
+    - name: Set server IP fact for use in other plays
+      set_fact:
+        server_ip: "{{ server.hcloud_server.ipv4_address }}"
+
+- name: Configure the newly created server
+  hosts: "{{ hostvars['localhost']['server_ip'] }}"  # Reference the fact set in the previous play
+  gather_facts: true
+  remote_user: root
+
+  tasks:
     - name: Ensure system package manager update
       block:
         - name: Update apt for Debian/Ubuntu
@@ -44,30 +54,25 @@
               sed -i.bak '/APT::Default-Release/d' /etc/apt/apt.conf
               apt-get update
             fi
-          delegate_to: "{{ server.hcloud_server.ipv4_address }}"
           when: ansible_distribution in ['Ubuntu', 'Debian']
 
-        - name: Update yum for CentOS/RedHat
-          ansible.builtin.shell: yum update -y
-          delegate_to: "{{ server.hcloud_server.ipv4_address }}"
-          when: ansible_distribution in ['CentOS', 'RedHat']
-
-        - name: Update pacman for Arch Linux
-          ansible.builtin.shell: pacman -Syu --noconfirm
-          delegate_to: "{{ server.hcloud_server.ipv4_address }}"
-          when: ansible_distribution == 'Archlinux'
+        # - name: Update yum for CentOS/RedHat
+        #   ansible.builtin.shell: yum update -y
+        #   when: ansible_distribution in ['CentOS', 'RedHat']
+        #
+        # - name: Update pacman for Arch Linux
+        #   ansible.builtin.shell: pacman -Syu --noconfirm
+        #   when: ansible_distribution == 'Archlinux'
 
     - name: Upgrade all packages and install security updates
       apt:
         upgrade: dist
         update_cache: yes
-      delegate_to: "{{ server.hcloud_server.ipv4_address }}"
       when: ansible_distribution in ['Ubuntu', 'Debian']
 
     - name: Reboot the server if a kernel upgrade was applied
       reboot:
         reboot_timeout: 600
         connect_timeout: 5
-        test_command: whoami  # Command to test if the server has come back up
-      delegate_to: "{{ server.hcloud_server.ipv4_address }}"
+        test_command: whoami
       when: ansible_distribution in ['Ubuntu', 'Debian']

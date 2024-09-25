@@ -38,5 +38,8 @@ def profile(request):
             instance=request.user
         )  # to fill in user info when they want to update
         p_form = ProfileUpdateForm(instance=request.user.profile)
-    context = {"u_form": u_form, "p_form": p_form}
+    context = {
+        "u_form": u_form,
+        "p_form": p_form,
+    }  # don't understand how it can access u,f_form??
     return render(request, "users/profile.html", context)
